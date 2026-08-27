@@ -270,7 +270,8 @@ private fun TabbedGridContent(
     androidx.activity.compose.BackHandler(enabled = gridHasFocus && uiState.tabs.size > 1) {
         val tab = tabFocusRequesters.getOrNull(uiState.selectedTabIndex)
         val focused = tab?.let { runCatching { it.requestFocus() }.getOrDefault(false) } ?: false
-        // Never leave Back consumed but inert: give the press back to whoever handles it next.
+        // This press is already spent. Clearing the target disables the handler so the
+        // next one reaches whoever handles it next rather than being consumed again.
         if (!focused) gridHasFocus = false
     }
 
@@ -599,7 +600,8 @@ private fun RowsContent(
                 rowStates[rowKey]?.scrollToItem(0)
                 val firstCard = rowFirstItemRequesters[rowKey]
                 val focused = firstCard?.let { runCatching { it.requestFocus() }.getOrDefault(false) } ?: false
-                // Never leave Back consumed but inert: give the press back to whoever handles it next.
+                // This press is already spent. Clearing the target disables the handler so the
+                // next one reaches whoever handles it next rather than being consumed again.
                 if (!focused) backTargetIndex = 0
             } finally {
                 backRestoring = false

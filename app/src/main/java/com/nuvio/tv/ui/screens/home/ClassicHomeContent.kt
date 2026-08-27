@@ -250,7 +250,8 @@ fun ClassicHomeContent(
             try {
                 rowState?.scrollToItem(0)
                 val focused = firstCard?.let { runCatching { it.requestFocus() }.getOrDefault(false) } ?: false
-                // Never leave Back consumed but inert: give the press back to the sidebar.
+                // This press is already spent. Clearing the target disables the handler so the
+                // next one reaches the sidebar rather than being consumed again.
                 if (!focused) backTargetIndex = 0
             } finally {
                 backRestoring = false

@@ -214,6 +214,8 @@ fun GridHomeContent(
     // after focus moves away, so Back would act on a row the user has already left.
     var backTargetRowKey by remember { mutableStateOf<String?>(null) }
     var backTargetIndex by remember { mutableIntStateOf(0) }
+    // The main grid has no rows, so its back target is the key of the focused tile.
+    var gridTargetKey by remember { mutableStateOf<String?>(null) }
     // A second Back while the first is still scrolling and refocusing belongs to whoever
     // handles it next, so the press is not swallowed twice.
     var backRestoring by remember { mutableStateOf(false) }
@@ -313,6 +315,7 @@ fun GridHomeContent(
         else emptyList()
     }
 
+
     Box(modifier = Modifier.fillMaxSize()) {
         val contentFocusRequester = LocalContentFocusRequester.current
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -376,6 +379,47 @@ fun GridHomeContent(
             result
         }
 
+        // Back inside the grid returns to the first tile of the section holding focus, the way
+        // back inside a row returns to the start of that row rather than to the first row.
+        val sectionFirstIndex = remember(trimmedPostItems, gridTargetKey) {
+            sectionFirstTileIndex(trimmedPostItems, gridTargetKey)
+        }
+        val sectionFirstKey = trimmedPostItems.getOrNull(sectionFirstIndex)?.second
+        val firstTileIndex = remember(trimmedPostItems) {
+            trimmedPostItems.indexOfFirst { (item, _) -> item.isGridTile() }
+        }
+
+        androidx.activity.compose.BackHandler(
+            enabled = gridTargetKey != null &&
+                sectionFirstKey != null &&
+                sectionFirstKey != gridTargetKey &&
+                !backRestoring
+        ) {
+            val targetKey = sectionFirstKey ?: return@BackHandler
+            backRestoring = true
+            backScope.launch {
+                try {
+                    // Scroll to the tile itself. Scrolling to index 0 would land on the hero and
+                    // focus would then pull the grid back down, which reads as two moves.
+                    val emittedBeforeTiles = preItems.size +
+                        (if (continueWatchingItems.isNotEmpty()) 1 else 0) +
+                        (if (uiState.continueWatchingEnabled && uiState.upcomingItems.isNotEmpty()) 1 else 0)
+                    gridState.scrollToItem(emittedBeforeTiles + sectionFirstIndex, 0)
+                    // Only the very first tile can be holding the initial-focus requester
+                    // instead of one from the map.
+                    val requester = focusRequesters[targetKey]
+                        ?: firstGridItemFocusRequester.takeIf { sectionFirstIndex == firstTileIndex }
+                    val focused = requester?.let {
+                        runCatching { it.requestFocus() }.getOrDefault(false)
+                    } ?: false
+                    // Never leave Back consumed but inert: give the press back to the sidebar.
+                    if (!focused) gridTargetKey = null
+                } finally {
+                    backRestoring = false
+                }
+            }
+        }
+
         LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Adaptive(minSize = posterCardStyle.width),
@@ -424,7 +468,7 @@ fun GridHomeContent(
                                 items = gridItem.items.asStable(),
                                 focusRequester = if (shouldRequestInitialFocus) heroFocusRequester else null,
                                 // Outside the rows, so Back here belongs to the sidebar.
-                                onItemFocus = { backTargetRowKey = null; backTargetIndex = 0 },
+                                onItemFocus = { backTargetRowKey = null; backTargetIndex = 0; gridTargetKey = null },
                                 showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
                                 onItemClick = remember(onNavigateToDetail) {
                                     { item ->
@@ -463,6 +507,7 @@ fun GridHomeContent(
                             lastFocusedCwIndex.intValue = it
                             backTargetRowKey = GRID_CONTINUE_WATCHING_ROW_KEY
                             backTargetIndex = it
+                            gridTargetKey = null
                         },
                         onItemClick = onContinueWatchingClick,
                         onStartFromBeginning = onContinueWatchingStartFromBeginning,
@@ -524,6 +569,7 @@ fun GridHomeContent(
                             lastFocusedUpcomingIndex.intValue = it
                             backTargetRowKey = GRID_UPCOMING_ROW_KEY
                             backTargetIndex = it
+                            gridTargetKey = null
                         },
                         onItemClick = onContinueWatchingClick,
                         onStartFromBeginning = onContinueWatchingStartFromBeginning,
@@ -595,7 +641,7 @@ fun GridHomeContent(
                             items = gridItem.items.asStable(),
                             focusRequester = if (shouldRequestInitialFocus) heroFocusRequester else null,
                             // Outside the rows, so Back here belongs to the sidebar.
-                            onItemFocus = { backTargetRowKey = null; backTargetIndex = 0 },
+                            onItemFocus = { backTargetRowKey = null; backTargetIndex = 0; gridTargetKey = null },
                             showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
                             onItemClick = remember(onNavigateToDetail) {
                                 { item ->
@@ -650,6 +696,7 @@ fun GridHomeContent(
                             onFocused = remember(itemKey, gridItem.item) {
                                 {
                                     lastFocusedGridItemKey.value = itemKey
+                                    gridTargetKey = itemKey
                                     backTargetRowKey = null
                                     // No rows here, but a card still belongs to one.
                                     onFocusedRowKeyChanged(
@@ -697,6 +744,7 @@ fun GridHomeContent(
                             focusRequester = focusRequester,
                             modifier = Modifier.onFocusChanged {
                                 if (it.hasFocus) {
+                                    gridTargetKey = itemKey
                                     backTargetRowKey = null
                                     backTargetIndex = 0
                                 }
@@ -723,7 +771,7 @@ fun GridHomeContent(
                             focusGlowEnabled = gridItem.focusGlowEnabled,
                             posterCardStyle = posterCardStyle,
                             focusRequester = focusRequesters.getOrPut(itemKey) { FocusRequester() },
-                            onFocused = remember(itemKey) { { lastFocusedGridItemKey.value = itemKey; backTargetRowKey = null } },
+                            onFocused = remember(itemKey) { { lastFocusedGridItemKey.value = itemKey; gridTargetKey = itemKey; backTargetRowKey = null } },
                             onClick = remember(gridItem.collectionId, gridItem.folder.id) {
                                 {
                                     onNavigateToFolderDetail(gridItem.collectionId, gridItem.folder.id)
@@ -1061,4 +1109,30 @@ private fun buildSectionMapping(gridItems: List<GridItem>, indexOffset: Int = 0)
         }
     }
     return SectionMapping(mapping)
+}
+
+private fun GridItem.isGridTile(): Boolean =
+    this is GridItem.Content || this is GridItem.SeeAll || this is GridItem.CollectionFolder
+
+/** Index of the first tile in the section holding [focusedKey], or -1 when there is none.
+ *  Sections start at a divider or a collection header. */
+private fun sectionFirstTileIndex(
+    items: List<Pair<GridItem, String>>,
+    focusedKey: String?
+): Int {
+    if (focusedKey == null) return -1
+    val focusedIndex = items.indexOfFirst { it.second == focusedKey }
+    if (focusedIndex < 0) return -1
+    var start = focusedIndex
+    while (start > 0) {
+        val previous = items[start - 1].first
+        if (previous is GridItem.SectionDivider || previous is GridItem.CollectionHeader) break
+        start--
+    }
+    for (i in start until items.size) {
+        val item = items[i].first
+        if (item is GridItem.SectionDivider || item is GridItem.CollectionHeader) break
+        if (item.isGridTile()) return i
+    }
+    return -1
 }

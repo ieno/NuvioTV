@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -86,6 +87,7 @@ import com.nuvio.tv.ui.components.PosterCardStyle
 import com.nuvio.tv.ui.components.collectionFolderCardImageUrl
 import com.nuvio.tv.ui.components.nuvioCardDepth
 import com.nuvio.tv.ui.components.rememberArtworkBackedCardGlow
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -198,6 +200,23 @@ fun GridHomeContent(
     }
     val heroFocusRequester = remember { FocusRequester() }
     val firstGridItemFocusRequester = remember { FocusRequester() }
+    // Back inside either continue-watching row returns to its first card before the press
+    // reaches the sidebar, matching the other home layouts.
+    val cwRowListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val upcomingRowListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val backScope = rememberCoroutineScope()
+
+    androidx.activity.compose.BackHandler(
+        enabled = lastFocusedCwIndex.intValue > 0 || lastFocusedUpcomingIndex.intValue > 0
+    ) {
+        val onUpcoming = lastFocusedUpcomingIndex.intValue > 0
+        val state = if (onUpcoming) upcomingRowListState else cwRowListState
+        val requester = if (onUpcoming) upcomingFocusRequesters[0] else cwFocusRequesters[0]
+        backScope.launch {
+            state.scrollToItem(0)
+            runCatching { requester?.requestFocus() }
+        }
+    }
     val hasContinueWatching = continueWatchingItems.isNotEmpty()
     val hasStandaloneFocusableGridItem = remember(gridItems) {
         gridItems.any { it is GridItem.Content || it is GridItem.SeeAll }
@@ -420,6 +439,7 @@ fun GridHomeContent(
                         focusedItemIndex = if (shouldRequestInitialFocus && !hasHero) 0 else -1,
                         lastFocusedIndex = lastFocusedCwIndex,
                         focusRequesters = cwFocusRequesters,
+                        listState = cwRowListState,
                         onItemFocused = { lastFocusedCwIndex.intValue = it },
                         onItemClick = onContinueWatchingClick,
                         onStartFromBeginning = onContinueWatchingStartFromBeginning,
@@ -476,6 +496,7 @@ fun GridHomeContent(
                         title = stringResource(R.string.upcoming_section_title),
                         lastFocusedIndex = lastFocusedUpcomingIndex,
                         focusRequesters = upcomingFocusRequesters,
+                        listState = upcomingRowListState,
                         onItemFocused = { lastFocusedUpcomingIndex.intValue = it },
                         onItemClick = onContinueWatchingClick,
                         onStartFromBeginning = onContinueWatchingStartFromBeginning,

@@ -84,6 +84,9 @@ fun CollectionRowSection(
     onItemFocused: (itemIndex: Int) -> Unit = {},
     onFolderFocused: (collection: Collection, folder: CollectionFolder) -> Unit = { _, _ -> },
     entryFocusRequester: FocusRequester? = null,
+    /** Attaches to the first card. [entryFocusRequester] cannot reach it once a later card
+     *  has been focused, because it follows the last-focused index. */
+    firstItemFocusRequester: FocusRequester? = null,
     rowFocusRequester: FocusRequester = remember { FocusRequester() }
 ) {
     val currentOnFolderClick by rememberUpdatedState(onFolderClick)
@@ -225,7 +228,15 @@ fun CollectionRowSection(
                                 currentOnFolderFocused(collection, folder)
                             }
                         },
-                        modifier = if (isEntryTarget) Modifier.focusRequester(entryFocusRequester!!) else Modifier,
+                        modifier = (if (isEntryTarget) Modifier.focusRequester(entryFocusRequester!!) else Modifier)
+                            .then(
+                                // Not while index 0 is also the entry target, to avoid two
+                                // requesters on one card. That only happens when the row is
+                                // already sitting on its first card, where Back is disabled.
+                                if (firstItemFocusRequester != null && index == 0 && !isEntryTarget) {
+                                    Modifier.focusRequester(firstItemFocusRequester)
+                                } else Modifier
+                            ),
                         focusRequester = itemFocusRequesters.getOrPut(
                             folderFocusKey(index, folder)
                         ) { FocusRequester() }

@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -577,7 +578,26 @@ private fun RowsContent(
     val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val rowEntryFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val rowFocusedItemIndex = remember { mutableMapOf<String, Int>() }
+    val rowFirstItemRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val focusedItemByRow = remember { mutableStateMapOf<String, Int>() }
+    val backScope = rememberCoroutineScope()
+
+    // Back inside a row returns to its first card before the press leaves the folder, matching
+    // the home rows. Both values are rewritten by whichever card takes focus, so they describe
+    // where focus is now rather than where it has been.
+    var backTargetRowKey by remember { mutableStateOf<String?>(null) }
+    var backTargetIndex by remember { mutableIntStateOf(0) }
+
+    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0 && backTargetRowKey != null) {
+        val rowKey = backTargetRowKey ?: return@BackHandler
+        backScope.launch {
+            rowStates[rowKey]?.scrollToItem(0)
+            val firstCard = rowFirstItemRequesters[rowKey]
+            val focused = firstCard?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
+            // Never leave Back consumed but inert: give the press back to whoever handles it next.
+            if (!focused) backTargetIndex = 0
+        }
+    }
     val currentFocusedRowKey = remember { mutableStateOf(focusState.focusedRowKey) }
     val folderScope = rememberCoroutineScope()
 
@@ -786,6 +806,7 @@ private fun RowsContent(
                             listState = listState,
                             rowFocusRequester = rowFocusRequester,
                             entryFocusRequester = rowEntryFocusRequesters.getOrPut(rowKey) { FocusRequester() },
+                            firstItemFocusRequester = rowFirstItemRequesters.getOrPut(rowKey) { FocusRequester() },
                             enableRowFocusRestorer = true,
                             focusedItemIndex = if (
                                 focusState.hasSavedFocus &&
@@ -799,6 +820,8 @@ private fun RowsContent(
                             onItemFocused = { itemIndex ->
                                 currentFocusedRowKey.value = rowKey
                                 rowFocusedItemIndex[rowKey] = itemIndex
+                                backTargetRowKey = rowKey
+                                backTargetIndex = itemIndex
                             }
                         )
                     }

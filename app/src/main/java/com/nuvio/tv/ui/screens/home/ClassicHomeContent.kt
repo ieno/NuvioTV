@@ -206,6 +206,21 @@ fun ClassicHomeContent(
     val rowStates = remember { mutableMapOf<String, LazyListState>() }
     val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val rowFocusedItemIndex = remember { mutableMapOf<String, Int>() }
+    val rowFirstItemRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    // Back inside a row returns to its first card before the press reaches the sidebar,
+    // the way Discover already sends focus back to its filters. Sitting on the first card
+    // leaves this disabled, so the next press opens the sidebar as before.
+    var focusedItemIndexInRow by remember { mutableIntStateOf(0) }
+
+    androidx.activity.compose.BackHandler(enabled = focusedItemIndexInRow > 0) {
+        val rowKey = currentFocusSnapshot.rowKey
+        if (rowKey != null) {
+            scope.launch {
+                rowStates[rowKey]?.scrollToItem(0)
+                runCatching { rowFirstItemRequesters[rowKey]?.requestFocus() }
+            }
+        }
+    }
     // Item keys of each row as they were when its focused index was last recorded, so the index
     // can be relocated when a refresh shifts the row instead of pointing at a new card.
     val previousRowItemKeys = remember { mutableMapOf<String, List<String>>() }
@@ -739,6 +754,7 @@ fun ClassicHomeContent(
                             )
                         },
                         rowFocusRequester = rowFocusRequester,
+                        firstItemFocusRequester = rowFirstItemRequesters.getOrPut(catalogKey) { FocusRequester() },
                         listState = listState,
                         enableRowFocusRestorer = true,
                         focusedItemIndex = focusedItemIndex,
@@ -751,6 +767,7 @@ fun ClassicHomeContent(
                                 currentFocusSnapshot.rowKey = catalogKey
                                 onFocusedRowKeyChanged(catalogKey)
                                 rowFocusedItemIndex[catalogKey] = itemIndex
+                                focusedItemIndexInRow = itemIndex
                             }
                         }
                     )
@@ -779,6 +796,7 @@ fun ClassicHomeContent(
                         posterCardStyle = classicSecondaryPosterCardStyle,
                         focusedItemIndex = collectionFocusedItemIndex,
                         rowFocusRequester = rowFocusRequesters.getOrPut(collectionKey) { FocusRequester() },
+                        firstItemFocusRequester = rowFirstItemRequesters.getOrPut(collectionKey) { FocusRequester() },
                         onItemFocused = { itemIndex ->
                             if (restoringFocus) restoringFocus = false
                             currentFocusSnapshot.rowIndex = index
@@ -786,6 +804,7 @@ fun ClassicHomeContent(
                             currentFocusSnapshot.rowKey = collectionKey
                             onFocusedRowKeyChanged(null)
                             rowFocusedItemIndex[collectionKey] = itemIndex
+                            focusedItemIndexInRow = itemIndex
                             if (uiState.classicFocusGradientEnabled) {
                                 focusedArtwork = homeRow.collection.folders.getOrNull(itemIndex)
                                     ?.toClassicFocusArtwork(uiState.focusedPosterBackdropExpandEnabled)

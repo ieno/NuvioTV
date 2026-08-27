@@ -108,6 +108,9 @@ fun CatalogRowSection(
     /** FocusRequester that will be attached to the first-or-last-focused card.
      *  Wide elements above (CW, collections) can point their D-pad down here. */
     entryFocusRequester: FocusRequester? = null,
+    /** Attaches to the first card. [entryFocusRequester] cannot reach it once a later card
+     *  has been focused, because it follows the last-focused index. */
+    firstItemFocusRequester: FocusRequester? = null,
     upFocusRequester: FocusRequester? = null,
     listState: LazyListState = rememberLazyListState(initialFirstVisibleItemIndex = initialScrollIndex)
 ) {
@@ -397,6 +400,11 @@ fun CatalogRowSection(
                         )
                         .then(
                             if (isEntryTarget) Modifier.focusRequester(entryFocusRequester!!) else Modifier
+                        )
+                        .then(
+                            if (firstItemFocusRequester != null && index == 0) {
+                                Modifier.focusRequester(firstItemFocusRequester)
+                            } else Modifier
                         ),
                     focusRequester = cardFocusRequester
                 )

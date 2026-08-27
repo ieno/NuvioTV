@@ -145,6 +145,14 @@ fun LibraryScreen(
     val gridState = rememberLazyGridState()
     var pendingPrimaryFocus by remember { mutableStateOf(true) }
     var lastFocusedPosterKey by rememberSaveable { mutableStateOf<String?>(null) }
+    // Back from the grid returns to the controls at the top before it leaves the screen,
+    // the way Discover already behaves. Once the controls hold focus this is off and the
+    // sidebar handler in MainActivity takes the press.
+    var posterHasFocus by remember { mutableStateOf(false) }
+
+    androidx.activity.compose.BackHandler(enabled = posterHasFocus) {
+        runCatching { primaryFocusRequester.requestFocus() }
+    }
     val visibleItemKeys = remember(uiState.visibleItems) {
         uiState.visibleItems.map { "${it.type}:${it.id}" }
     }
@@ -313,6 +321,7 @@ fun LibraryScreen(
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) {
+            Box(modifier = Modifier.onFocusChanged { if (it.hasFocus) posterHasFocus = false }) {
             LibraryViewModeRow(
                 selectedMode = viewMode,
                 primaryFocusRequester = primaryFocusRequester,
@@ -344,10 +353,12 @@ fun LibraryScreen(
                     null
                 }
             )
+            }
         }
 
         if (viewMode == LibraryViewMode.Saved) {
             item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(modifier = Modifier.onFocusChanged { if (it.hasFocus) posterHasFocus = false }) {
                 LibrarySelectorsRow(
                     sourceMode = uiState.sourceMode,
                     listTabs = uiState.listTabs,
@@ -392,6 +403,7 @@ fun LibraryScreen(
                         expandedPicker = null
                     }
                 )
+                }
             }
 
             if (uiState.sourceMode == LibrarySourceMode.TRAKT && uiState.isTrackingAuthenticated) {
@@ -445,6 +457,7 @@ fun LibraryScreen(
                     showLabel = true,
                     onFocused = {
                         lastFocusedPosterKey = focusKey
+                        posterHasFocus = true
                         viewModel.prefetchMetaOnFocus(item.id, item.type)
                     },
                     onClick = {

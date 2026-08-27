@@ -227,8 +227,11 @@ fun ClassicHomeContent(
     // has been, and anything outside a row clears them.
     var backTargetRowKey by remember { mutableStateOf<String?>(null) }
     var backTargetIndex by remember { mutableIntStateOf(0) }
+    // A second Back while the first is still scrolling and refocusing belongs to whoever
+    // handles it next, so the press is not swallowed twice.
+    var backRestoring by remember { mutableStateOf(false) }
 
-    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0 && backTargetRowKey != null) {
+    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0 && backTargetRowKey != null && !backRestoring) {
         val rowKey = backTargetRowKey ?: return@BackHandler
         // The two continue-watching style rows keep their card requesters by index; the
         // catalog rows keep a dedicated one for their first card.
@@ -242,11 +245,16 @@ fun ClassicHomeContent(
             UPCOMING_ROW_KEY -> upcomingRowListState
             else -> rowStates[rowKey]
         }
+        backRestoring = true
         scope.launch {
-            rowState?.scrollToItem(0)
-            val focused = firstCard?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
-            // Never leave Back consumed but inert: give the press back to the sidebar.
-            if (!focused) backTargetIndex = 0
+            try {
+                rowState?.scrollToItem(0)
+                val focused = firstCard?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
+                // Never leave Back consumed but inert: give the press back to the sidebar.
+                if (!focused) backTargetIndex = 0
+            } finally {
+                backRestoring = false
+            }
         }
     }
 

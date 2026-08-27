@@ -166,16 +166,24 @@ internal fun ModernHomeRowsList(
     val backScope = rememberCoroutineScope()
     var backTargetRowKey by remember { mutableStateOf<String?>(null) }
     var backTargetIndex by remember { mutableIntStateOf(0) }
+    // A second Back while the first is still scrolling and refocusing belongs to whoever
+    // handles it next, so the press is not swallowed twice.
+    var backRestoring by remember { mutableStateOf(false) }
 
-    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0) {
+    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0 && !backRestoring) {
         val rowKey = backTargetRowKey
         if (rowKey != null) {
+            backRestoring = true
             backScope.launch {
-                rowListStatesMap[rowKey]?.scrollToItem(0)
-                val firstCard = stableItemFocusRequestersByRow[rowKey]?.value?.get(0)
-                val focused = firstCard?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
-                // Never leave Back consumed but inert: give the press back to the sidebar.
-                if (!focused) backTargetIndex = 0
+                try {
+                    rowListStatesMap[rowKey]?.scrollToItem(0)
+                    val firstCard = stableItemFocusRequestersByRow[rowKey]?.value?.get(0)
+                    val focused = firstCard?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
+                    // Never leave Back consumed but inert: give the press back to the sidebar.
+                    if (!focused) backTargetIndex = 0
+                } finally {
+                    backRestoring = false
+                }
             }
         }
     }

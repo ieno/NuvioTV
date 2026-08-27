@@ -149,21 +149,30 @@ fun LibraryScreen(
     // the way Discover already behaves. Once the controls hold focus this is off and the
     // sidebar handler in MainActivity takes the press.
     var posterHasFocus by remember { mutableStateOf(false) }
+    // A second Back while the first is still scrolling and refocusing belongs to the sidebar,
+    // so the press is not swallowed twice.
+    var backRestoring by remember { mutableStateOf(false) }
 
-    androidx.activity.compose.BackHandler(enabled = posterHasFocus) {
+    androidx.activity.compose.BackHandler(enabled = posterHasFocus && !backRestoring) {
+        backRestoring = true
         scope.launch {
-            // The controls are items of this same grid, so deep in a long list they are not
-            // composed and cannot take focus. Scroll them back into existence first, then
-            // retry, the way the sort-change restore just above does.
-            runCatching { gridState.animateScrollToItem(0) }
-            var focused = false
-            repeat(6) {
-                focused = runCatching { primaryFocusRequester.requestFocus() }.isSuccess
-                if (focused) return@launch
-                delay(24)
+            try {
+                // The controls are items of this same grid, so deep in a long list they are not
+                // composed and cannot take focus. Scroll them back into existence first, then
+                // retry, the way the sort-change restore just above does. Not animated: this is
+                // focus restoration, and the retry below should start as soon as they compose.
+                runCatching { gridState.scrollToItem(0) }
+                var focused = false
+                repeat(6) {
+                    focused = runCatching { primaryFocusRequester.requestFocus() }.isSuccess
+                    if (focused) return@launch
+                    delay(24)
+                }
+                // Never leave Back consumed but inert: give the press back to the sidebar.
+                posterHasFocus = false
+            } finally {
+                backRestoring = false
             }
-            // Never leave Back consumed but inert: give the press back to the sidebar.
-            posterHasFocus = false
         }
     }
     val visibleItemKeys = remember(uiState.visibleItems) {

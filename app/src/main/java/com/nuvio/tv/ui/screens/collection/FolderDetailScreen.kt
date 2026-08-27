@@ -587,15 +587,23 @@ private fun RowsContent(
     // where focus is now rather than where it has been.
     var backTargetRowKey by remember { mutableStateOf<String?>(null) }
     var backTargetIndex by remember { mutableIntStateOf(0) }
+    // A second Back while the first is still scrolling and refocusing belongs to whoever
+    // handles it next, so the press is not swallowed twice.
+    var backRestoring by remember { mutableStateOf(false) }
 
-    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0 && backTargetRowKey != null) {
+    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0 && backTargetRowKey != null && !backRestoring) {
         val rowKey = backTargetRowKey ?: return@BackHandler
+        backRestoring = true
         backScope.launch {
-            rowStates[rowKey]?.scrollToItem(0)
-            val firstCard = rowFirstItemRequesters[rowKey]
-            val focused = firstCard?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
-            // Never leave Back consumed but inert: give the press back to whoever handles it next.
-            if (!focused) backTargetIndex = 0
+            try {
+                rowStates[rowKey]?.scrollToItem(0)
+                val firstCard = rowFirstItemRequesters[rowKey]
+                val focused = firstCard?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
+                // Never leave Back consumed but inert: give the press back to whoever handles it next.
+                if (!focused) backTargetIndex = 0
+            } finally {
+                backRestoring = false
+            }
         }
     }
     val currentFocusedRowKey = remember { mutableStateOf(focusState.focusedRowKey) }

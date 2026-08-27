@@ -214,16 +214,24 @@ fun GridHomeContent(
     // after focus moves away, so Back would act on a row the user has already left.
     var backTargetRowKey by remember { mutableStateOf<String?>(null) }
     var backTargetIndex by remember { mutableIntStateOf(0) }
+    // A second Back while the first is still scrolling and refocusing belongs to whoever
+    // handles it next, so the press is not swallowed twice.
+    var backRestoring by remember { mutableStateOf(false) }
 
-    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0 && backTargetRowKey != null) {
+    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0 && backTargetRowKey != null && !backRestoring) {
         val onUpcoming = backTargetRowKey == GRID_UPCOMING_ROW_KEY
         val state = if (onUpcoming) upcomingRowListState else cwRowListState
         val requester = if (onUpcoming) upcomingFocusRequesters[0] else cwFocusRequesters[0]
+        backRestoring = true
         backScope.launch {
-            state.scrollToItem(0)
-            val focused = requester?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
-            // Never leave Back consumed but inert: give the press back to the sidebar.
-            if (!focused) backTargetIndex = 0
+            try {
+                state.scrollToItem(0)
+                val focused = requester?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
+                // Never leave Back consumed but inert: give the press back to the sidebar.
+                if (!focused) backTargetIndex = 0
+            } finally {
+                backRestoring = false
+            }
         }
     }
     val hasContinueWatching = continueWatchingItems.isNotEmpty()

@@ -407,7 +407,9 @@ fun GridHomeContent(
                         (if (uiState.continueWatchingEnabled && uiState.upcomingItems.isNotEmpty()) 1 else 0)
                     gridState.scrollToItem(emittedBeforeTiles + sectionFirstIndex, 0)
                     // Only the very first tile can be holding the initial-focus requester
-                    // instead of one from the map.
+                    // instead of one from the map. A see-all card keeps no requester at all, so a
+                    // section that begins with one falls through to the sidebar rather than
+                    // focusing it. See-all normally sits at the end of a section.
                     val requester = focusRequesters[targetKey]
                         ?: firstGridItemFocusRequester.takeIf { sectionFirstIndex == firstTileIndex }
                     val focused = requester?.let {

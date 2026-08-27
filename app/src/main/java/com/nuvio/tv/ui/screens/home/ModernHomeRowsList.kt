@@ -19,6 +19,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -65,6 +68,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 @OptIn(
     ExperimentalFoundationApi::class,
@@ -155,6 +159,25 @@ internal fun ModernHomeRowsList(
 
     val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val stableItemFocusRequestersByRow = remember { mutableMapOf<String, StableRef<MutableMap<Int, FocusRequester>>>() }
+
+    // Back inside a row returns to its first card before the press reaches the sidebar,
+    // the way Discover already sends focus back to its filters. Sitting on the first card
+    // leaves this disabled, so the next press opens the sidebar as before.
+    val backScope = rememberCoroutineScope()
+    var backTargetRowKey by remember { mutableStateOf<String?>(null) }
+    var backTargetIndex by remember { mutableIntStateOf(0) }
+
+    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0) {
+        val rowKey = backTargetRowKey
+        if (rowKey != null) {
+            backScope.launch {
+                rowListStatesMap[rowKey]?.scrollToItem(0)
+                runCatching {
+                    stableItemFocusRequestersByRow[rowKey]?.value?.get(0)?.requestFocus()
+                }
+            }
+        }
+    }
 
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -371,6 +394,10 @@ internal fun ModernHomeRowsList(
                         if (focusedItemByRowMap[rowKey] != index) {
                             focusedItemByRowMap[rowKey] = index
                         }
+                        // Whichever card just took focus is where Back starts from, so this
+                        // does not wait on the debounced active-row bookkeeping above.
+                        backTargetRowKey = rowKey
+                        backTargetIndex = index
 
                         if (isContinueWatchingRow) {
                             if (lastFocusedContinueWatchingIndex.value != index) {

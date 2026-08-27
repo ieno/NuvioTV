@@ -74,6 +74,8 @@ private class FocusSnapshot(
     var rowKey: String? = null
 )
 
+private const val CONTINUE_WATCHING_ROW_KEY = "continue_watching"
+
 private const val CLASSIC_CATALOG_POSTER_SCALE = 1.35f
 private const val CLASSIC_SECONDARY_ROW_POSTER_SCALE = 1.2f
 private val CLASSIC_ROW_HEADER_FOCUS_INSET = 85.dp
@@ -215,9 +217,16 @@ fun ClassicHomeContent(
     androidx.activity.compose.BackHandler(enabled = focusedItemIndexInRow > 0) {
         val rowKey = currentFocusSnapshot.rowKey
         if (rowKey != null) {
+            // Continue Watching keeps its card requesters by index, the catalog rows keep a
+            // dedicated one for their first card.
+            val firstCard = if (rowKey == CONTINUE_WATCHING_ROW_KEY) {
+                cwItemFocusRequesters[0]
+            } else {
+                rowFirstItemRequesters[rowKey]
+            }
             scope.launch {
                 rowStates[rowKey]?.scrollToItem(0)
-                runCatching { rowFirstItemRequesters[rowKey]?.requestFocus() }
+                runCatching { firstCard?.requestFocus() }
             }
         }
     }
@@ -599,8 +608,9 @@ fun ClassicHomeContent(
                     onItemFocused = { itemIndex ->
                         currentFocusSnapshot.rowIndex = -1
                         currentFocusSnapshot.itemIndex = itemIndex
-                        currentFocusSnapshot.rowKey = "continue_watching"
+                        currentFocusSnapshot.rowKey = CONTINUE_WATCHING_ROW_KEY
                         onFocusedRowKeyChanged(null)
+                        focusedItemIndexInRow = itemIndex
                         if (uiState.classicFocusGradientEnabled) {
                             focusedArtwork = uiState.continueWatchingItems.getOrNull(itemIndex)
                                 ?.toClassicFocusArtwork(uiState.focusedPosterBackdropExpandEnabled)
@@ -609,6 +619,7 @@ fun ClassicHomeContent(
                     blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
                     useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
                     focusRequesters = cwItemFocusRequesters,
+                    listState = rowStates.getOrPut(CONTINUE_WATCHING_ROW_KEY) { LazyListState() },
                     cardWidth = classicContinueWatchingCardWidth,
                     imageHeight = classicContinueWatchingImageHeight,
                     cardStyle = uiState.continueWatchingCardStyle,

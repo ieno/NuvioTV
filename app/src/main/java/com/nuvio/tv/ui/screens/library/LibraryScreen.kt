@@ -155,7 +155,7 @@ fun LibraryScreen(
             // The controls are items of this same grid, so deep in a long list they are not
             // composed and cannot take focus. Scroll them back into existence first, then
             // retry, the way the sort-change restore just above does.
-            runCatching { gridState.scrollToItem(0) }
+            runCatching { gridState.animateScrollToItem(0) }
             var focused = false
             repeat(6) {
                 focused = runCatching { primaryFocusRequester.requestFocus() }.isSuccess

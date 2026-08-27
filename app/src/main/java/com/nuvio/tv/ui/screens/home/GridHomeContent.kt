@@ -415,6 +415,8 @@ fun GridHomeContent(
                             HeroCarousel(
                                 items = gridItem.items.asStable(),
                                 focusRequester = if (shouldRequestInitialFocus) heroFocusRequester else null,
+                                // Outside the rows, so Back here belongs to the sidebar.
+                                onItemFocus = { backTargetRowKey = null; backTargetIndex = 0 },
                                 showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
                                 onItemClick = remember(onNavigateToDetail) {
                                     { item ->
@@ -584,6 +586,8 @@ fun GridHomeContent(
                         HeroCarousel(
                             items = gridItem.items.asStable(),
                             focusRequester = if (shouldRequestInitialFocus) heroFocusRequester else null,
+                            // Outside the rows, so Back here belongs to the sidebar.
+                            onItemFocus = { backTargetRowKey = null; backTargetIndex = 0 },
                             showImdbRatings = uiState.homeImdbRatingsVisibility.showRatings,
                             onItemClick = remember(onNavigateToDetail) {
                                 { item ->
@@ -683,6 +687,12 @@ fun GridHomeContent(
                         SeeAllGridCard(
                             posterCardStyle = posterCardStyle,
                             focusRequester = focusRequester,
+                            modifier = Modifier.onFocusChanged {
+                                if (it.hasFocus) {
+                                    backTargetRowKey = null
+                                    backTargetIndex = 0
+                                }
+                            },
                             label = catalogSeeAllLabel,
                             onClick = {
                                 onNavigateToCatalogSeeAll(

@@ -224,8 +224,7 @@ fun ClassicHomeContent(
     // Back inside a row returns to its first card before the press reaches the sidebar, the
     // way Discover already sends focus back to its filters. Both values are rewritten by
     // whichever card takes focus, so they describe where focus is now rather than where it
-    // has been. Areas outside a row, the hero above them, leave the last row's values in
-    // place, which is the known gap here.
+    // has been, and anything outside a row clears them.
     var backTargetRowKey by remember { mutableStateOf<String?>(null) }
     var backTargetIndex by remember { mutableIntStateOf(0) }
 
@@ -368,6 +367,10 @@ fun ClassicHomeContent(
             if (uiState.classicFocusGradientEnabled) {
                 focusedArtwork = null
             }
+            // The hero sits outside every row, so Back from here belongs to the sidebar
+            // rather than to whichever row was focused before.
+            backTargetRowKey = null
+            backTargetIndex = 0
             latestOnItemFocus(item)
         }
     }

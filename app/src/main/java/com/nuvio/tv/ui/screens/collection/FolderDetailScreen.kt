@@ -267,9 +267,10 @@ private fun TabbedGridContent(
     var gridHasFocus by remember { mutableStateOf(false) }
 
     androidx.activity.compose.BackHandler(enabled = gridHasFocus && uiState.tabs.size > 1) {
-        runCatching {
-            (tabFocusRequesters.getOrNull(uiState.selectedTabIndex) ?: FocusRequester.Default).requestFocus()
-        }
+        val tab = tabFocusRequesters.getOrNull(uiState.selectedTabIndex)
+        val focused = tab?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
+        // Never leave Back consumed but inert: give the press back to whoever handles it next.
+        if (!focused) gridHasFocus = false
     }
 
     Row(

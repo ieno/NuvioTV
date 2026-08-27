@@ -402,7 +402,10 @@ fun CatalogRowSection(
                             if (isEntryTarget) Modifier.focusRequester(entryFocusRequester!!) else Modifier
                         )
                         .then(
-                            if (firstItemFocusRequester != null && index == 0) {
+                            // Not while index 0 is also the entry target, to avoid two
+                            // requesters on one card. That only happens when the row is
+                            // already sitting on its first card, where Back is disabled.
+                            if (firstItemFocusRequester != null && index == 0 && !isEntryTarget) {
                                 Modifier.focusRequester(firstItemFocusRequester)
                             } else Modifier
                         ),

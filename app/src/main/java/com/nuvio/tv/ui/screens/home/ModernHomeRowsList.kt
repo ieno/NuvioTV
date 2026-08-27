@@ -172,9 +172,10 @@ internal fun ModernHomeRowsList(
         if (rowKey != null) {
             backScope.launch {
                 rowListStatesMap[rowKey]?.scrollToItem(0)
-                runCatching {
-                    stableItemFocusRequestersByRow[rowKey]?.value?.get(0)?.requestFocus()
-                }
+                val firstCard = stableItemFocusRequestersByRow[rowKey]?.value?.get(0)
+                val focused = firstCard?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
+                // Never leave Back consumed but inert: give the press back to the sidebar.
+                if (!focused) backTargetIndex = 0
             }
         }
     }

@@ -151,7 +151,20 @@ fun LibraryScreen(
     var posterHasFocus by remember { mutableStateOf(false) }
 
     androidx.activity.compose.BackHandler(enabled = posterHasFocus) {
-        runCatching { primaryFocusRequester.requestFocus() }
+        scope.launch {
+            // The controls are items of this same grid, so deep in a long list they are not
+            // composed and cannot take focus. Scroll them back into existence first, then
+            // retry, the way the sort-change restore just above does.
+            runCatching { gridState.scrollToItem(0) }
+            var focused = false
+            repeat(6) {
+                focused = runCatching { primaryFocusRequester.requestFocus() }.isSuccess
+                if (focused) return@launch
+                delay(24)
+            }
+            // Never leave Back consumed but inert: give the press back to the sidebar.
+            posterHasFocus = false
+        }
     }
     val visibleItemKeys = remember(uiState.visibleItems) {
         uiState.visibleItems.map { "${it.type}:${it.id}" }

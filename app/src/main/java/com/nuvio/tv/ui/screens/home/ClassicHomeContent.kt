@@ -75,6 +75,7 @@ private class FocusSnapshot(
 )
 
 private const val CONTINUE_WATCHING_ROW_KEY = "continue_watching"
+private const val UPCOMING_ROW_KEY = "upcoming_section"
 
 private const val CLASSIC_CATALOG_POSTER_SCALE = 1.35f
 private const val CLASSIC_SECONDARY_ROW_POSTER_SCALE = 1.2f
@@ -209,33 +210,46 @@ fun ClassicHomeContent(
     val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     val rowFocusedItemIndex = remember { mutableMapOf<String, Int>() }
     val rowFirstItemRequesters = remember { mutableMapOf<String, FocusRequester>() }
-    // Back inside a row returns to its first card before the press reaches the sidebar,
-    // the way Discover already sends focus back to its filters. Sitting on the first card
-    // leaves this disabled, so the next press opens the sidebar as before.
-    var focusedItemIndexInRow by remember { mutableIntStateOf(0) }
-
-    androidx.activity.compose.BackHandler(enabled = focusedItemIndexInRow > 0) {
-        val rowKey = currentFocusSnapshot.rowKey
-        if (rowKey != null) {
-            // Continue Watching keeps its card requesters by index, the catalog rows keep a
-            // dedicated one for their first card.
-            val firstCard = if (rowKey == CONTINUE_WATCHING_ROW_KEY) {
-                cwItemFocusRequesters[0]
-            } else {
-                rowFirstItemRequesters[rowKey]
-            }
-            scope.launch {
-                rowStates[rowKey]?.scrollToItem(0)
-                runCatching { firstCard?.requestFocus() }
-            }
-        }
-    }
     // Item keys of each row as they were when its focused index was last recorded, so the index
     // can be relocated when a refresh shifts the row instead of pointing at a new card.
     val previousRowItemKeys = remember { mutableMapOf<String, List<String>>() }
     val cwItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     val upcomingItemFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
+    // Kept out of rowStates: that map is pruned against the catalog and collection keys,
+    // which these two rows are not.
+    val cwRowListState = rememberLazyListState()
+    val upcomingRowListState = rememberLazyListState()
     val lastFocusedUpcomingIndex = remember { mutableIntStateOf(-1) }
+
+    // Back inside a row returns to its first card before the press reaches the sidebar, the
+    // way Discover already sends focus back to its filters. Both values are rewritten by
+    // whichever card takes focus, so they describe where focus is now rather than where it
+    // has been. Areas outside a row, the hero above them, leave the last row's values in
+    // place, which is the known gap here.
+    var backTargetRowKey by remember { mutableStateOf<String?>(null) }
+    var backTargetIndex by remember { mutableIntStateOf(0) }
+
+    androidx.activity.compose.BackHandler(enabled = backTargetIndex > 0 && backTargetRowKey != null) {
+        val rowKey = backTargetRowKey ?: return@BackHandler
+        // The two continue-watching style rows keep their card requesters by index; the
+        // catalog rows keep a dedicated one for their first card.
+        val firstCard = when (rowKey) {
+            CONTINUE_WATCHING_ROW_KEY -> cwItemFocusRequesters[0]
+            UPCOMING_ROW_KEY -> upcomingItemFocusRequesters[0]
+            else -> rowFirstItemRequesters[rowKey]
+        }
+        val rowState = when (rowKey) {
+            CONTINUE_WATCHING_ROW_KEY -> cwRowListState
+            UPCOMING_ROW_KEY -> upcomingRowListState
+            else -> rowStates[rowKey]
+        }
+        scope.launch {
+            rowState?.scrollToItem(0)
+            val focused = firstCard?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
+            // Never leave Back consumed but inert: give the press back to the sidebar.
+            if (!focused) backTargetIndex = 0
+        }
+    }
 
     var restoringFocus by remember { mutableStateOf(focusState.hasSavedFocus) }
     val heroFocusRequester = remember { FocusRequester() }
@@ -264,6 +278,8 @@ fun ClassicHomeContent(
     LaunchedEffect(visibleRowKeys) {
         rowStates.keys.retainAll(visibleRowKeys)
         rowFocusRequesters.keys.retainAll(visibleRowKeys)
+        rowFirstItemRequesters.keys.retainAll(visibleRowKeys)
+        rowFocusedItemIndex.keys.retainAll(visibleRowKeys)
     }
 
     DisposableEffect(Unit) {
@@ -610,7 +626,8 @@ fun ClassicHomeContent(
                         currentFocusSnapshot.itemIndex = itemIndex
                         currentFocusSnapshot.rowKey = CONTINUE_WATCHING_ROW_KEY
                         onFocusedRowKeyChanged(null)
-                        focusedItemIndexInRow = itemIndex
+                        backTargetRowKey = CONTINUE_WATCHING_ROW_KEY
+                        backTargetIndex = itemIndex
                         if (uiState.classicFocusGradientEnabled) {
                             focusedArtwork = uiState.continueWatchingItems.getOrNull(itemIndex)
                                 ?.toClassicFocusArtwork(uiState.focusedPosterBackdropExpandEnabled)
@@ -619,7 +636,7 @@ fun ClassicHomeContent(
                     blurUnwatchedEpisodes = uiState.blurUnwatchedEpisodes,
                     useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
                     focusRequesters = cwItemFocusRequesters,
-                    listState = rowStates.getOrPut(CONTINUE_WATCHING_ROW_KEY) { LazyListState() },
+                    listState = cwRowListState,
                     cardWidth = classicContinueWatchingCardWidth,
                     imageHeight = classicContinueWatchingImageHeight,
                     cardStyle = uiState.continueWatchingCardStyle,
@@ -673,6 +690,11 @@ fun ClassicHomeContent(
                     useEpisodeThumbnails = uiState.useEpisodeThumbnailsInCw,
                     focusRequesters = upcomingItemFocusRequesters,
                     lastFocusedIndexState = lastFocusedUpcomingIndex,
+                    listState = upcomingRowListState,
+                    onItemFocused = { itemIndex ->
+                        backTargetRowKey = UPCOMING_ROW_KEY
+                        backTargetIndex = itemIndex
+                    },
                     cardWidth = classicContinueWatchingCardWidth,
                     imageHeight = classicContinueWatchingImageHeight,
                     cardStyle = uiState.continueWatchingCardStyle,
@@ -778,7 +800,8 @@ fun ClassicHomeContent(
                                 currentFocusSnapshot.rowKey = catalogKey
                                 onFocusedRowKeyChanged(catalogKey)
                                 rowFocusedItemIndex[catalogKey] = itemIndex
-                                focusedItemIndexInRow = itemIndex
+                                backTargetRowKey = catalogKey
+                                backTargetIndex = itemIndex
                             }
                         }
                     )
@@ -815,7 +838,8 @@ fun ClassicHomeContent(
                             currentFocusSnapshot.rowKey = collectionKey
                             onFocusedRowKeyChanged(null)
                             rowFocusedItemIndex[collectionKey] = itemIndex
-                            focusedItemIndexInRow = itemIndex
+                            backTargetRowKey = collectionKey
+                            backTargetIndex = itemIndex
                             if (uiState.classicFocusGradientEnabled) {
                                 focusedArtwork = homeRow.collection.folders.getOrNull(itemIndex)
                                     ?.toClassicFocusArtwork(uiState.focusedPosterBackdropExpandEnabled)

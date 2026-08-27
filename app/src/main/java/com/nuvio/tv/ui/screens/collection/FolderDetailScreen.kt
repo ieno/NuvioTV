@@ -262,6 +262,15 @@ private fun TabbedGridContent(
     onItemLongPress: (MetaPreview, String) -> Unit = { _, _ -> }
 ) {
     val tabFocusRequesters = remember(uiState.tabs.size) { uiState.tabs.indices.map { FocusRequester() } }
+    // Back from the grid returns to the tabs before it leaves the screen, the way Discover
+    // already behaves. Once a tab holds focus this is off and the press falls through.
+    var gridHasFocus by remember { mutableStateOf(false) }
+
+    androidx.activity.compose.BackHandler(enabled = gridHasFocus && uiState.tabs.size > 1) {
+        runCatching {
+            (tabFocusRequesters.getOrNull(uiState.selectedTabIndex) ?: FocusRequester.Default).requestFocus()
+        }
+    }
 
     Row(
         modifier = Modifier
@@ -313,7 +322,10 @@ private fun TabbedGridContent(
                 uiState.tabs.forEachIndexed { index, tab ->
                     Tab(
                         selected = index == uiState.selectedTabIndex,
-                        onFocus = { onSelectTab(index) },
+                        onFocus = {
+                            gridHasFocus = false
+                            onSelectTab(index)
+                        },
                         onClick = { onSelectTab(index) },
                         modifier = if (index < tabFocusRequesters.size) {
                             Modifier.focusRequester(tabFocusRequesters[index])
@@ -460,7 +472,10 @@ private fun TabbedGridContent(
                         posterCardStyle = posterCardStyle,
                         focusRequester = focusReq,
                         isWatched = isItemWatched(item),
-                        onFocus = { _ -> lastFocusedItemKey = itemKey },
+                        onFocus = { _ ->
+                            lastFocusedItemKey = itemKey
+                            gridHasFocus = true
+                        },
                         onClick = {
                             HeroBackdropState.update(item.backdropUrl)
                             onNavigateToDetail(

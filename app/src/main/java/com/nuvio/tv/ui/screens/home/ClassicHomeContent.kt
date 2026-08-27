@@ -249,7 +249,7 @@ fun ClassicHomeContent(
         scope.launch {
             try {
                 rowState?.scrollToItem(0)
-                val focused = firstCard?.let { runCatching { it.requestFocus() }.isSuccess } ?: false
+                val focused = firstCard?.let { runCatching { it.requestFocus() }.getOrDefault(false) } ?: false
                 // Never leave Back consumed but inert: give the press back to the sidebar.
                 if (!focused) backTargetIndex = 0
             } finally {

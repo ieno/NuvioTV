@@ -164,7 +164,7 @@ fun LibraryScreen(
                 runCatching { gridState.scrollToItem(0) }
                 var focused = false
                 repeat(6) {
-                    focused = runCatching { primaryFocusRequester.requestFocus() }.isSuccess
+                    focused = runCatching { primaryFocusRequester.requestFocus() }.getOrDefault(false)
                     if (focused) return@launch
                     delay(24)
                 }

@@ -586,10 +586,24 @@ fun SearchScreen(
             } else {
                 backToFieldLatched = true
                 coroutineScope.launch {
-                    listState.scrollToItem(0)
-                    runCatching { searchFocusRequester.requestFocus() }
-                    // The focus request can start an input session and show the keyboard.
+                    val focused = runCatching {
+                        listState.scrollToItem(0)
+                        searchFocusRequester.requestFocus()
+                    }.getOrDefault(false)
+                    // The focus request failed, so leave the step to the next Back.
+                    if (!focused) {
+                        backToFieldLatched = false
+                        return@launch
+                    }
+                    // The focus request can start an input session and show the keyboard. Scrolling
+                    // the row back into composition can delay that session past this first hide, so
+                    // hide again over the next frames, until the user navigates away.
                     keyboardController?.hide()
+                    repeat(3) {
+                        withFrameNanos { }
+                        if (!backToFieldLatched) return@launch
+                        keyboardController?.hide()
+                    }
                 }
             }
         }

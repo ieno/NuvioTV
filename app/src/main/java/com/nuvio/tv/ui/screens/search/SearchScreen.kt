@@ -120,6 +120,8 @@ import com.nuvio.tv.R
 /** Skeleton rows shown while a search is pending, matching the two mobile renders. */
 private const val SEARCH_SKELETON_ROW_COUNT = 2
 
+private const val SEARCH_INPUT_ITEM_KEY = "search_input"
+
 private val NAVIGATION_KEYS = setOf(
     KeyEvent.KEYCODE_DPAD_UP,
     KeyEvent.KEYCODE_DPAD_DOWN,
@@ -586,10 +588,27 @@ fun SearchScreen(
             } else {
                 backToFieldLatched = true
                 coroutineScope.launch {
+                    val inputWasVisible = listState.layoutInfo.visibleItemsInfo
+                        .any { it.key == SEARCH_INPUT_ITEM_KEY }
                     listState.scrollToItem(0)
-                    runCatching { searchFocusRequester.requestFocus() }
-                    // The focus request can start an input session and show the keyboard.
+                    // Give an input scrolled back into view a couple of frames before requesting focus.
+                    // Waiting only for layout still brought the keyboard back briefly on device.
+                    if (!inputWasVisible) repeat(2) { withFrameNanos { } }
+                    val focused = runCatching { searchFocusRequester.requestFocus() }.getOrDefault(false)
+                    // The focus request failed, so leave the step to the next Back.
+                    if (!focused) {
+                        backToFieldLatched = false
+                        return@launch
+                    }
+                    // The focus request can start an input session and show the keyboard. Should the
+                    // session still start late, hide again over the next frames while the Back step
+                    // stays latched and the screen active.
                     keyboardController?.hide()
+                    repeat(3) {
+                        withFrameNanos { }
+                        if (!backToFieldLatched || !isScreenActive) return@launch
+                        keyboardController?.hide()
+                    }
                 }
             }
         }
@@ -621,7 +640,7 @@ fun SearchScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.lg)
         ) {
-            item(key = "search_input") {
+            item(key = SEARCH_INPUT_ITEM_KEY) {
                 SearchInputField(
                     modifier = Modifier.onFocusChanged { inputRowHasFocus = it.hasFocus },
                     query = uiState.query,
